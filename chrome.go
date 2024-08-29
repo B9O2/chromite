@@ -10,6 +10,8 @@ import (
 
 	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 )
 
@@ -24,6 +26,7 @@ type TabProduct struct {
 	Requests  map[string]*network.Request
 	Responses map[string]*network.Response
 	Downloads map[string]*Attachment
+	Logs      []string
 }
 
 type Chrome struct {
@@ -45,6 +48,7 @@ func (c *Chrome) NewTab(url *url.URL, timeout time.Duration, f func(ev any, prod
 		Requests:  map[string]*network.Request{},
 		Responses: map[string]*network.Response{},
 		Downloads: map[string]*Attachment{},
+		Logs:      []string{},
 	}
 
 	var err error
@@ -61,6 +65,12 @@ func (c *Chrome) NewTab(url *url.URL, timeout time.Duration, f func(ev any, prod
 			product.Requests[ev.RequestID.String()] = ev.Request
 		case *network.EventResponseReceived:
 			product.Responses[ev.RequestID.String()] = ev.Response
+		case *page.EventJavascriptDialogOpening:
+			go func() {
+				chromedp.Run(ctx,
+					page.HandleJavaScriptDialog(true),
+				)
+			}()
 		case *browser.EventDownloadWillBegin:
 			product.Downloads[ev.GUID] = &Attachment{
 				Name:      ev.SuggestedFilename,
@@ -74,6 +84,27 @@ func (c *Chrome) NewTab(url *url.URL, timeout time.Duration, f func(ev any, prod
 			case browser.DownloadProgressStateCompleted:
 			case browser.DownloadProgressStateCanceled:
 			}
+		case *runtime.EventConsoleAPICalled:
+			var log string
+			if ev.Type == "log" {
+				for _, a := range ev.Args {
+					switch a.Type {
+					case "string":
+						log += string(a.Value)[1 : len(a.Value)-1]
+					case "number":
+						log += string(a.Value)
+					case "object":
+						v, _ := a.MarshalJSON()
+						log += string(v)
+					default:
+						v, _ := a.MarshalJSON()
+						log += "{@" + "UnknownType " + string(a.Type) + "@Value " + string(v) + "}"
+					}
+				}
+				product.Logs = append(product.Logs, log)
+			} else {
+				break
+			}
 		}
 		if f != nil {
 			err = f(ev, product)
@@ -82,8 +113,12 @@ func (c *Chrome) NewTab(url *url.URL, timeout time.Duration, f func(ev any, prod
 
 	chromedp.ListenTarget(ctx, l)
 
-	actions = append(actions, chromedp.Navigate(url.String()))
+	actions = append([]chromedp.Action{
+		chromedp.Navigate(url.String()),
+	}, actions...)
+
 	chromedp.Run(ctx, actions...)
+
 	return product, err
 }
 
