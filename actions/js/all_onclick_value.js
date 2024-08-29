@@ -16,6 +16,5 @@ clickableElements.forEach(function(element) {
     if (elementValue!==null&&elementValue!==""){
         elementValues.push(elementValue);
     }
-    console.log("find")
 });
 elementValues;

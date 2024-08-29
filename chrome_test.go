@@ -19,8 +19,8 @@ func TestChrome(t *testing.T) {
 		return
 	}
 	defer c.Close()
-	target := "http://127.0.0.1:8888/click.html"
-	//target := "https://www.baidu.com"
+	//target := "http://127.0.0.1:8888/click.html"
+	target := "https://www.baidu.com"
 	u, err := url.Parse(target)
 	if err != nil {
 		fmt.Println("Parse>", err)
